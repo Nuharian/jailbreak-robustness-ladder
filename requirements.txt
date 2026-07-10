@@ -1,0 +1,18 @@
+# Core harness (no heavy deps): dataset build, judge, metrics, analysis tables
+# --- always required ---
+# (stdlib only for build_dataset / judge / metrics)
+
+# --- running local open-weight models ---
+transformers>=4.45.0
+accelerate>=0.34.0
+# torch is installed separately with the CUDA build matching your GPU, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128   (Blackwell / RTX 50xx)
+#   pip install torch                                                       (CPU only)
+
+# --- analysis / figures ---
+matplotlib>=3.8.0
+numpy>=1.26.0
+
+# --- optional API backends (not needed for the default local run) ---
+# openai>=1.0.0
+# anthropic>=0.40.0

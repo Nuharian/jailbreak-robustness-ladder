@@ -1,0 +1,19 @@
+# --- SAFETY: never publish model responses to harmful prompts ---
+# Un-redacted raw generations (local-only, used for judge validation):
+results/**/responses_raw.jsonl
+# Redacted responses too — conservative for a public repo. The label-only scores.jsonl,
+# tables/, and figures/ fully reproduce every result and figure without any response text.
+results/**/responses.jsonl
+# Raw validation samples contain full response text (incl. harmful): keep only report.json
+results/validation/*.jsonl
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# HF / model caches, large weights
+*.safetensors
+hf_cache/

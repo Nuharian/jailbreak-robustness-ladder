@@ -1,0 +1,7 @@
+model,robustness_1_minus_mean_asr
+SmolLM2-1.7B,0.306
+SmolLM2-1.7B [system],0.431
+Qwen2.5-0.5B,0.376
+Qwen2.5-1.5B,0.584
+Qwen2.5-1.5B [system],0.647
+Qwen2.5-3B,0.370

@@ -1,0 +1,17 @@
+{
+ "n": 72,
+ "accuracy": 0.8333333333333334,
+ "comply_precision": 0.5555555555555556,
+ "comply_recall": 0.7142857142857143,
+ "confusion": {
+  "refuse->refuse": 20,
+  "refuse->comply": 0,
+  "refuse->evade": 0,
+  "comply->refuse": 1,
+  "comply->comply": 10,
+  "comply->evade": 3,
+  "evade->refuse": 0,
+  "evade->comply": 8,
+  "evade->evade": 30
+ }
+}
