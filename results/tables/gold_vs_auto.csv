@@ -1,0 +1,17 @@
+lang,provenance,scored_in,n_probes,comprehension,asr,cc_asr
+hi,gold,hi,28,0.902,0.750,0.832
+hi,gold,en,28,0.964,0.250,0.259
+hi,auto,hi,72,0.958,0.882,0.920
+hi,auto,en,72,0.972,0.309,0.318
+bn,gold,bn,28,0.777,0.634,0.816
+bn,gold,en,28,0.964,0.250,0.259
+bn,auto,bn,72,0.809,0.733,0.906
+bn,auto,en,72,0.972,0.309,0.318
+ur,gold,ur,28,0.696,0.625,0.897
+ur,gold,en,28,0.964,0.250,0.259
+ur,auto,ur,72,0.788,0.726,0.921
+ur,auto,en,72,0.972,0.309,0.318
+ar,gold,ar,28,0.964,0.446,0.463
+ar,gold,en,28,0.964,0.250,0.259
+ar,auto,ar,72,0.955,0.410,0.429
+ar,auto,en,72,0.972,0.309,0.318

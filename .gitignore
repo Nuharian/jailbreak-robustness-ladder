@@ -17,3 +17,6 @@ venv/
 # HF / model caches, large weights
 *.safetensors
 hf_cache/
+
+# local backups of earlier paper drafts
+paper/archive/

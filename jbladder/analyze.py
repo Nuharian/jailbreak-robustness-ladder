@@ -12,6 +12,8 @@ Outputs
   results/figures/model_robustness.png
   results/figures/composability.png
   results/figures/safety_tax.png            (over-refusal vs attack success)
+  results/tables/defense_transitions.csv    (genuine refusal gain vs comprehension collapse)
+  results/figures/defense_transitions.png
 
 Run:  python -m jbladder.analyze
 """
@@ -20,6 +22,7 @@ import csv
 import glob
 import json
 import os
+import sys
 
 from . import metrics
 from .transforms import COMBOS, all_transform_names, mechanism_of
@@ -162,26 +165,33 @@ def make_figures(records, rates, robustness, potency, comp, models, transforms):
     fig.savefig(os.path.join(FIGURES, "model_robustness.png"), bbox_inches="tight")
     plt.close(fig)
 
-    # ---- 4. composability: observed vs predicted-if-independent ----
+    # ---- 4. composability: residual = observed - independence prediction, combo x condition ----
     if comp:
-        fig, ax = plt.subplots(figsize=(7, 4.2))
-        labels, obs, pred = [], [], []
-        for combo, per_model in comp.items():
-            for m, d in per_model.items():
-                labels.append(f"{combo}\n{short_model(m)}")
-                obs.append(d["observed"])
-                pred.append(d["predicted_independent"])
-        x = np.arange(len(labels))
-        w = 0.38
-        ax.bar(x - w / 2, pred, w, label="predicted if independent", color="#9bb8d3")
-        ax.bar(x + w / 2, obs, w, label="observed (stacked)", color="#b5651d")
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=7)
-        ax.set_ylabel("Attack Success Rate")
-        ax.set_title("Do stacked attacks compound? Observed vs. independence prediction")
-        ax.legend(fontsize=8)
+        combos = list(comp)
+        conds = sorted({m for per_model in comp.values() for m in per_model})
+        R = np.full((len(combos), len(conds)), np.nan)
+        for i, combo in enumerate(combos):
+            for j, m in enumerate(conds):
+                if m in comp[combo]:
+                    R[i, j] = comp[combo][m]["residual"]
+        lim = max(0.05, np.nanmax(np.abs(R)))
+        fig, ax = plt.subplots(figsize=(7.4, 3.4))
+        im = ax.imshow(R, cmap="RdBu_r", vmin=-lim, vmax=lim, aspect="auto")
+        for i in range(len(combos)):
+            for j in range(len(conds)):
+                if R[i, j] == R[i, j]:
+                    ax.text(j, i, f"{R[i, j]:+.2f}", ha="center", va="center", fontsize=7.5,
+                            color="white" if abs(R[i, j]) > 0.55 * lim else "#14161a")
+        ax.set_xticks(range(len(conds)))
+        ax.set_xticklabels([short_model(m).replace("-", "\n", 1).replace(" [system]", "\n+defense")
+                            for m in conds], fontsize=7.5)
+        ax.set_yticks(range(len(combos)))
+        ax.set_yticklabels(combos, fontsize=7.5)
+        cb = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
+        cb.set_label("observed − independence prediction", fontsize=7.5)
+        ax.set_title("Do stacked attacks compound?  (>0 super-additive, <0 sub-additive)")
         fig.tight_layout()
-        fig.savefig(os.path.join(FIGURES, "composability.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(FIGURES, "composability.png"), bbox_inches="tight", dpi=200)
         plt.close(fig)
 
     # ---- 5. safety tax: over-refusal vs attack success, per model ----
@@ -223,6 +233,7 @@ def write_novel_tables(records):
     cc = metrics.comprehension_controlled(records)
     cells = metrics.competence_safety_cells(records)
     deff = metrics.defense_effect(records)
+    trans = metrics.defense_transitions(records)
 
     rows = []
     for m in sorted(cc):
@@ -250,10 +261,23 @@ def write_novel_tables(records):
                      f"{d['asr_reduction']:+.3f}", f"{d['rel_reduction']:.3f}",
                      f"{d['over_refusal_base']:.3f}", f"{d['over_refusal_defended']:.3f}",
                      f"{d['over_refusal_cost']:+.3f}"] for m, d in deff.items()])
-    return cc, cells, deff
+
+    if trans:
+        order = ["ALL", "en", "zh", "es", "fr", "ar", "hi", "ur", "bn"]
+        keys = sorted(trans, key=lambda k: (k[0], order.index(k[1]) if k[1] in order else 99))
+        _write_csv(os.path.join(TABLES, "defense_transitions.csv"),
+                   ["model", "lang", "n", "comply_to_refuse", "comply_to_evade", "removed",
+                    "genuine_share", "fake_share", "asr_base", "asr_defended",
+                    "cc_asr_base", "cc_asr_defended"],
+                   [[short_model(m), l, d["n"], d["comply_to_refuse"], d["comply_to_evade"],
+                     d["removed"], f"{d['genuine_share']:.3f}", f"{d['fake_share']:.3f}",
+                     f"{d['asr_base']:.3f}", f"{d['asr_defended']:.3f}",
+                     f"{d['cc_asr_base']:.3f}", f"{d['cc_asr_defended']:.3f}"]
+                    for (m, l), d in ((k, trans[k]) for k in keys)])
+    return cc, cells, deff, trans
 
 
-def make_novel_figures(cells, deff):
+def make_novel_figures(cells, deff, trans=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -266,10 +290,11 @@ def make_novel_figures(cells, deff):
     LNAME = {"en": "English", "zh": "Chinese", "es": "Spanish", "fr": "French",
              "ar": "Arabic", "hi": "Hindi", "ur": "Urdu", "bn": "Bangla"}
 
-    # ---- masking figure: comprehension vs raw ASR vs comprehension-controlled ASR, per language
+    # ---- masking figure: comprehension vs raw ASR vs comprehension-controlled ASR, per language.
+    #      Undefended models only, so the defense's effect does not leak into the language contrast.
     agg = {l: {"comp": [], "asr": [], "cc": []} for l in LANGS}
     for c in cells:
-        if c["lang"] in agg:
+        if c["lang"] in agg and "[system]" not in c["model"]:
             agg[c["lang"]]["comp"].append(c["harm_comprehension"])
             agg[c["lang"]]["asr"].append(c["asr"])
             agg[c["lang"]]["cc"].append(c["cc_asr"])
@@ -289,7 +314,7 @@ def make_novel_figures(cells, deff):
     ax.set_ylim(0, 1)
     ax.set_title("Comprehension masks the cross-lingual safety hole\n"
                  "(raw ASR looks low where the model simply doesn't understand)")
-    ax.legend(fontsize=7.5, loc="upper right")
+    ax.legend(fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=3, frameon=False)
     fig.tight_layout()
     fig.savefig(os.path.join(FIGURES, "comprehension_masking.png"), bbox_inches="tight")
     plt.close(fig)
@@ -337,8 +362,50 @@ def make_novel_figures(cells, deff):
         fig.savefig(os.path.join(FIGURES, "defense_effect.png"), bbox_inches="tight")
         plt.close(fig)
 
+    # ---- defense transition audit: of the compliances the defense removed, how many became
+    #      refusals (genuine safety) versus evasions (the model merely got more confused)?
+    if trans:
+        bases = sorted({m for (m, l) in trans if l == "ALL"})
+        langs = [l for l in LANGS if any((m, l) in trans for m in bases)]
+        fig, axes = plt.subplots(1, len(bases), figsize=(5.2 * len(bases), 4.4), sharey=True,
+                                 sharex=True, squeeze=False)
+        for ax, m in zip(axes[0], bases):
+            ls = [l for l in langs if (m, l) in trans]
+            y = np.arange(len(ls))
+            gen = [trans[(m, l)]["comply_to_refuse"] for l in ls]
+            fake = [trans[(m, l)]["comply_to_evade"] for l in ls]
+            ax.barh(y, gen, 0.62, label="COMPLY → REFUSE (genuine safety gain)", color="#2a7f62")
+            ax.barh(y, fake, 0.62, left=gen, label="COMPLY → EVADE (comprehension collapse)",
+                    color="#b5651d")
+            for i, l in enumerate(ls):
+                share = trans[(m, l)]["fake_share"]
+                if share == share and (gen[i] + fake[i]):
+                    ax.text(gen[i] + fake[i] + 0.6, i, f"{share*100:.0f}% collapse",
+                            va="center", fontsize=7.5)
+            ax.set_yticks(y)
+            ax.set_yticklabels([LNAME[l] for l in ls])
+            ax.set_xlabel("compliances removed by the defense")
+            ax.set_title(short_model(m))
+            ax.margins(x=0.22)
+        axes[0][0].invert_yaxis()
+        handles, labels_ = axes[0][0].get_legend_handles_labels()
+        fig.legend(handles, labels_, fontsize=8, ncol=2, loc="lower center",
+                   bbox_to_anchor=(0.5, -0.04), frameon=False)
+        fig.suptitle("What did the defense actually do?" + chr(10) +
+                     "A two-way judge scores both bars as a safety improvement",
+                     fontweight="bold")
+        fig.tight_layout(rect=(0, 0.03, 1, 1))
+        fig.savefig(os.path.join(FIGURES, "defense_transitions.png"), bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
 
 def main():
+    # Windows consoles default to cp1252, which cannot encode the typographic characters used
+    # in the summary below; without this, analyze.py exits 1 after writing all its outputs.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     records = load_records()
     if not records:
         print("No results found. Run jbladder.run_eval first.")
@@ -347,8 +414,8 @@ def main():
           f"{len({r['model'] for r in records})} model(s)")
     rates, lifts, robustness, potency, comp, mech, models, transforms = write_tables(records)
     make_figures(records, rates, robustness, potency, comp, models, transforms)
-    cc, cells, deff = write_novel_tables(records)
-    make_novel_figures(cells, deff)
+    cc, cells, deff, trans = write_novel_tables(records)
+    make_novel_figures(cells, deff, trans)
     ci = metrics.overall_asr_ci(records)
     print(f"[analyze] wrote tables -> {TABLES}")
     print(f"[analyze] wrote figures -> {FIGURES}")
@@ -371,7 +438,7 @@ def main():
     ys = [c["cc_asr"] for c in cells if c["lang"] != "en"]
     r = _pearson(xs, ys)
     print("\n== Cross-lingual safety vs comprehension (translation cells only) ==")
-    print(f"  Pearson r(comprehension, cc_asr) = {r:.3f}  over {len(xs)} model×language cells")
+    print(f"  Pearson r(comprehension, cc_asr) = {r:.3f}  over {len(xs)} model x language cells")
     for l in ["en", "zh", "es", "fr", "ar", "hi", "ur", "bn"]:
         lc = [c for c in cells if c["lang"] == l]
         if lc:
@@ -382,7 +449,19 @@ def main():
         print("\n== Defense effect (defensive system prompt) ==")
         for m, d in deff.items():
             print(f"  {short_model(m):26s} ASR {d['asr_base']:.3f} -> {d['asr_defended']:.3f}  "
-                  f"(−{d['rel_reduction']*100:.0f}%), over-refusal cost {d['over_refusal_cost']:+.3f}")
+                  f"(-{d['rel_reduction']*100:.0f}%), over-refusal cost {d['over_refusal_cost']:+.3f}")
+    if trans:
+        print(chr(10) + "== Defense transition audit (of compliances removed, share that is collapse) ==")
+        for m in sorted({mm for (mm, l) in trans if l == "ALL"}):
+            print(f"  {short_model(m)}")
+            for l in ["ALL", "en", "zh", "es", "fr", "ar", "hi", "ur", "bn"]:
+                d = trans.get((m, l))
+                if not d or not d["removed"]:
+                    continue
+                print(f"    {l:>4}  C->R={d['comply_to_refuse']:>3}  C->E={d['comply_to_evade']:>3}  "
+                      f"collapse={d['fake_share']*100:>5.1f}%   "
+                      f"rawASR {d['asr_base']:.2f}->{d['asr_defended']:.2f}   "
+                      f"ccASR {d['cc_asr_base']:.2f}->{d['cc_asr_defended']:.2f}")
 
 
 if __name__ == "__main__":

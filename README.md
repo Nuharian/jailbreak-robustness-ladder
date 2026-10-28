@@ -24,8 +24,10 @@ Everything runs **locally on open-weight models with no API keys**.
   obfuscation (EVADE). Multilingual, Unicode-aware, and validated against human labels.
 - **A measured defense.** A hardened defensive system prompt, re-run over the whole ladder, with
   ASR reduction and over-refusal cost quantified.
-- **Rigor.** 95% bootstrap confidence intervals; composability (super-additivity) analysis;
-  cross-model transfer.
+- **Rigor.** Probe-clustered bootstrap confidence intervals; worst-case (Manski) bounds that need
+  no assumption about evasions; native-vs-machine translation check; judge-error correction from
+  human labels; composability (super-additivity) analysis; cross-model transfer; a defense
+  transition audit (genuine refusal vs. comprehension collapse).
 
 ## Repository layout
 
@@ -40,9 +42,12 @@ jbladder/
   run_eval.py           model × prompt × transform → responses + scores (+ --defense)
   metrics.py            cc-ASR, attack lift, robustness, potency, composability, CIs, defense
   analyze.py            tables + figures (incl. the sweet-spot & masking plots)
+  robustness.py         CIs, contrasts, bounds, gold-vs-auto, judge-error correction, transfer
   validate.py           judge validation against human labels
-tests/                  unit tests (transforms, judge, metrics)
-paper/jailbreak_ladder.md   the writeup
+  make_docx.py          paper -> editable Word file (results/jbladder_paper.docx)
+  make_pdfs.py          paper -> print HTML (results/paper.html) -> PDF via a headless browser
+tests/                  unit tests (transforms, judge, metrics, robustness)
+paper/jailbreak_ladder.md   the paper (source of the .docx and .pdf)
 data/, results/         generated
 ```
 
@@ -57,6 +62,7 @@ python -m jbladder.translate_bootstrap                 # -> data/translations_au
 python -m jbladder.run_eval --model Qwen/Qwen2.5-1.5B-Instruct --keep-raw
 python -m jbladder.run_eval --model Qwen/Qwen2.5-1.5B-Instruct --defense system --keep-raw
 python -m jbladder.analyze                              # -> results/tables, results/figures
+python -m jbladder.robustness                           # -> CIs, bounds, robustness tables, Fig. 10
 
 # or run the whole suite:
 bash run_all.sh
@@ -84,4 +90,11 @@ defensive — measuring and reducing a safety gap that disadvantages non-English
 ## Status
 
 Four open models evaluated (Qwen2.5-0.5B/1.5B/3B, SmolLM2-1.7B) on an 8 GB laptop GPU, no API keys.
-See `paper/jailbreak_ladder.md` for methodology, results, limitations, and references.
+See `paper/jailbreak_ladder.md` (or `results/jbladder_paper.pdf`) for methodology, results,
+limitations, and references. The judge-error correction in `robustness.py` additionally needs the
+human validation labels, which are not in this repository because they contain raw model responses;
+everything else regenerates from the committed `scores.jsonl` files.
+
+## Citation
+
+See `CITATION.cff`. A Zenodo DOI will be listed here once the preprint is archived.
